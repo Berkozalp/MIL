@@ -1,0 +1,27 @@
+{
+    "fov": 75.0,
+    "height": 10.0,
+    "pitch": -45.0,
+    "yaw": 0.0,
+    "roll": 0.0,
+    "buildings": [
+        {
+            "id": "hsevp24p3",
+            "position": [
+                0,
+                5,
+                -10
+            ],
+            "scale": [
+                5,
+                10,
+                5
+            ],
+            "rotation": [
+                0,
+                0,
+                0
+            ]
+        }
+    ]
+}

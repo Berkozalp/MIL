@@ -1,0 +1,32 @@
+{
+    "roi": [
+        [
+            0,
+            360
+        ],
+        [
+            1280,
+            360
+        ],
+        [
+            1280,
+            720
+        ],
+        [
+            0,
+            720
+        ]
+    ],
+    "tripwire": {
+        "p1": [
+            0,
+            500
+        ],
+        "p2": [
+            1280,
+            500
+        ]
+    },
+    "skip_frames": 2,
+    "video_url": "https://www.youtube.com/watch?v=u4UZ4UvZXrg"
+}

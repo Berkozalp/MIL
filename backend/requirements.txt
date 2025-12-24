@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+mediapipe
+opencv-python
+numpy
+websockets
+python-multipart
+scipy
+yt_dlp
