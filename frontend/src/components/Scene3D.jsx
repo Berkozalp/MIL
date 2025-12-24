@@ -142,17 +142,15 @@ const Scene3D = ({ isActive }) => {
     return (
         <div
             ref={containerRef}
-            className="absolute inset-0 pointer-events-auto"
-            style={{ zIndex: 100 }}
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'auto', zIndex: 100 }}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
         >
             {/* SVG Grid */}
             <svg
-                className="absolute inset-0 w-full h-full cursor-move"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'move', pointerEvents: 'auto' }}
                 onMouseDown={handleGridMouseDown}
-                style={{ pointerEvents: 'auto' }}
             >
                 {generateGridLines()}
             </svg>
@@ -161,32 +159,44 @@ const Scene3D = ({ isActive }) => {
             {showCorners && Object.entries(corners).map(([key, pos]) => (
                 <div
                     key={key}
-                    className="absolute cursor-grab active:cursor-grabbing transition-transform hover:scale-125"
                     style={{
+                        position: 'absolute',
+                        cursor: 'grab',
                         left: `${pos.x}%`,
                         top: `${pos.y}%`,
                         transform: 'translate(-50%, -50%)',
                         zIndex: 200,
-                        pointerEvents: 'auto'
+                        pointerEvents: 'auto',
+                        transition: 'transform 0.1s'
                     }}
                     onMouseDown={(e) => handleCornerMouseDown(key, e)}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.25)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)'}
                 >
                     <div
-                        className="w-4 h-4 rounded-full border-2 transition-all"
                         style={{
-                            backgroundColor: draggingCorner === key ? '#ff0000' : gridColor,
-                            borderColor: '#ffffff',
-                            boxShadow: '0 0 10px rgba(0,0,0,0.5)',
                             width: draggingCorner === key ? '20px' : '16px',
-                            height: draggingCorner === key ? '20px' : '16px'
+                            height: draggingCorner === key ? '20px' : '16px',
+                            borderRadius: '50%',
+                            border: '2px solid #ffffff',
+                            backgroundColor: draggingCorner === key ? '#ff0000' : gridColor,
+                            boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+                            transition: 'all 0.1s'
                         }}
                     />
                     <div
-                        className="absolute top-6 left-1/2 transform -translate-x-1/2 text-xs font-mono px-2 py-1 rounded"
                         style={{
+                            position: 'absolute',
+                            top: '1.5rem',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            whiteSpace: 'nowrap',
                             backgroundColor: 'rgba(0,0,0,0.7)',
                             color: gridColor,
-                            whiteSpace: 'nowrap'
                         }}
                     >
                         {key.replace(/([A-Z])/g, ' $1').trim()}
@@ -197,21 +207,37 @@ const Scene3D = ({ isActive }) => {
             {/* Reset Button */}
             <button
                 onClick={resetGrid}
-                className="absolute top-4 right-4 px-4 py-2 rounded-lg font-semibold transition-all hover:scale-105"
                 style={{
+                    position: 'absolute',
+                    top: '1rem',
+                    right: '1rem',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontWeight: '600',
                     backgroundColor: 'rgba(255,0,0,0.8)',
                     color: 'white',
                     zIndex: 300,
-                    pointerEvents: 'auto'
+                    pointerEvents: 'auto',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'transform 0.1s'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
             >
                 Reset Grid
             </button>
 
             {/* Instructions */}
             <div
-                className="absolute bottom-4 left-4 px-4 py-3 rounded-lg font-mono text-sm"
                 style={{
+                    position: 'absolute',
+                    bottom: '1rem',
+                    left: '1rem',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
                     backgroundColor: 'rgba(0,0,0,0.8)',
                     color: gridColor,
                     zIndex: 300,
@@ -219,7 +245,7 @@ const Scene3D = ({ isActive }) => {
                     maxWidth: '300px'
                 }}
             >
-                <div className="font-bold mb-2">Calibration Controls:</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Calibration Controls:</div>
                 <div>• Drag corners to warp perspective</div>
                 <div>• Drag grid to move position</div>
                 <div>• Use panel to adjust settings</div>

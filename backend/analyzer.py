@@ -30,7 +30,14 @@ class AnalyticState:
 class UrbanFlowAnalyzer:
     def __init__(self, model_path: str = "efficientdet_lite0.tflite"):
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model not found at {model_path}")
+            print(f"Warning: Model {model_path} not found. Object detection will fail.")
+
+        # Use new MediaPipe Tasks API
+        import mediapipe as mp
+        BaseOptions = mp.tasks.BaseOptions
+        ObjectDetector = mp.tasks.vision.ObjectDetector
+        ObjectDetectorOptions = mp.tasks.vision.ObjectDetectorOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
 
         options = ObjectDetectorOptions(
             base_options=BaseOptions(model_asset_path=model_path),
@@ -39,124 +46,98 @@ class UrbanFlowAnalyzer:
             running_mode=VisionRunningMode.IMAGE
         )
         self.detector = ObjectDetector.create_from_options(options)
-        self.tracker = CentroidTracker(maxDisappeared=50, maxDistance=100)
         
-        # Dictionary to store category names for each object ID
-        # objectID -> category_name
-        self.object_categories = {} 
+        from tracker_advanced import AdvancedTracker
+        self.tracker = AdvancedTracker(max_disappeared=40, max_distance=100)
         
         self.state = AnalyticState()
-        
-        # ROI and Detection Settings
-        self.roi_polygon = None # List of (x, y) tuples in percentages
+        self.roi_polygon = None 
         self.score_threshold = 0.4
 
     def update_settings(self, settings: dict):
         if 'maxDistance' in settings:
-            self.tracker.maxDistance = settings['maxDistance']
+            self.tracker.max_distance = settings['maxDistance']
         if 'maxDisappeared' in settings:
-            self.tracker.maxDisappeared = settings['maxDisappeared']
+            self.tracker.max_disappeared = settings['maxDisappeared']
         if 'scoreThreshold' in settings:
             self.score_threshold = settings['scoreThreshold']
 
     def update_roi(self, points: List[dict]):
-        # Convert List[dict] {'x': 20, 'y': 30} to List[Tuple[int, int]]
         self.roi_polygon = [(int(p['x']), int(p['y'])) for p in points]
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, AnalyticState]:
         h_orig, w_orig = frame.shape[:2]
         
-        # Apply ROI Masking if defined
-        mask = None
-        if self.roi_polygon and len(self.roi_polygon) > 2:
-            mask = np.zeros((h_orig, w_orig), dtype=np.uint8)
-            roi_pts = np.array([[(p[0] * w_orig // 100, p[1] * h_orig // 100)] for p in self.roi_polygon], dtype=np.int32)
-            cv2.fillPoly(mask, [roi_pts], 255)
-            # Mask the frame for detection (optional, but helps focus detector)
-            # frame_to_detect = cv2.bitwise_and(frame, frame, mask=mask)
-        
-        # Convert to MP Image
+        # Convert to RGB and MP Image
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         
         detection_result = self.detector.detect(mp_image)
         
-        rects = []
-        temp_categories = []
+        detections = [] # List of ((cx, cy), bbox)
         
+        # Apply ROI Mask if defined (Optimization: Mask frame before detection? 
+        # MP Tasks doesn't support mask input directly easily without image manipulation.
+        # We process all, then filter.)
+        mask = None
+        if self.roi_polygon and len(self.roi_polygon) > 2:
+            mask = np.zeros((h_orig, w_orig), dtype=np.uint8)
+            roi_pts = np.array([[(p[0] * w_orig // 100, p[1] * h_orig // 100)] for p in self.roi_polygon], dtype=np.int32)
+            cv2.fillPoly(mask, [roi_pts], 255)
+
         for detection in detection_result.detections:
             category = detection.categories[0]
+            # Filter for PERSON only
+            if category.category_name != 'person':
+                continue
             if category.score < self.score_threshold:
                 continue
                 
             bbox = detection.bounding_box
             x, y, w, h = bbox.origin_x, bbox.origin_y, bbox.width, bbox.height
             
-            # ROI Filter: Center of bbox must be inside mask
-            cx_box, cy_box = x + w//2, y + h//2
+            cx, cy = x + w//2, y + h//2
+            
+            # ROI Filter
             if mask is not None:
-                if mask[min(cy_box, h_orig-1), min(cx_box, w_orig-1)] == 0:
+                if mask[min(cy, h_orig-1), min(cx, w_orig-1)] == 0:
                     continue
 
-            rects.append((x, y, x + w, y + h))
-            temp_categories.append(category.category_name)
+            # Format for tracker: ((cx, cy), (x, y, x+w, y+h))
+            detections.append(((cx, cy), (x, y, x+w, y+h)))
             
         # Update tracker
-        objects = self.tracker.update(rects)
+        tracked_objects = self.tracker.update(detections)
         
         annotated_frame = frame.copy()
         
-        # Draw ROI overlay on annotated frame
+        # Draw ROI overlay
         if self.roi_polygon and len(self.roi_polygon) > 2:
             roi_pts = np.array([[(p[0] * w_orig // 100, p[1] * h_orig // 100)] for p in self.roi_polygon], dtype=np.int32)
             cv2.polylines(annotated_frame, [roi_pts], True, (0, 255, 0), 2)
         
-        # Update currently tracked count
-        self.state.currently_tracked = len(objects)
+        # Filter logic: Count IN vs OUT based on ROI?
+        # For now, just count tracked objects
+        self.state.currently_tracked = len(tracked_objects)
         
-        # Clean up metadata
-        current_ids = set(objects.keys())
-        stored_ids = set(self.object_categories.keys())
-        for missing_id in stored_ids - current_ids:
-            del self.object_categories[missing_id]
-        
-        for (objectID, centroid) in objects.items():
-            matched_detection = False
-            closest_dist = 99999
-            closest_idx = -1
+        # Draw Objects
+        for obj_id, obj in tracked_objects.items():
+            cx, cy = int(obj.centroid[0]), int(obj.centroid[1])
             
-            for i, rect in enumerate(rects):
-                rx, ry, rx2, ry2 = rect
-                rcx, rcy = (rx+rx2)//2, (ry+ry2)//2
-                d = np.linalg.norm(np.array(centroid) - np.array([rcx, rcy]))
-                if d < 80 and d < closest_dist:
-                    closest_dist = d
-                    closest_idx = i
+            # Draw trail
+            if len(obj.history) > 1:
+                pts = np.array(obj.history, np.int32)
+                pts = pts.reshape((-1, 1, 2))
+                cv2.polylines(annotated_frame, [pts], False, (0, 255, 255), 2)
             
-            if closest_idx != -1:
-                rx, ry, rx2, ry2 = rects[closest_idx]
-                w, h = rx2 - rx, ry2 - ry
-                category = temp_categories[closest_idx]
-                self.object_categories[objectID] = {
-                    "category": category,
-                    "bbox_size": (w, h),
-                    "last_seen_bbox": (rx, ry, rx2, ry2)
-                }
-                matched_detection = True
-            
-            meta = self.object_categories.get(objectID, {"category": "Object", "bbox_size": (50, 50)})
-            w, h = meta["bbox_size"]
-            c_x, c_y = centroid
-            
-            start_x, start_y = int(c_x - w/2), int(c_y - h/2)
-            end_x, end_y = int(c_x + w/2), int(c_y + h/2)
-            
-            color = (0, 255, 0) if matched_detection else (0, 255, 255)
-            cv2.rectangle(annotated_frame, (start_x, start_y), (end_x, end_y), color, 2)
-            label = f"{meta['category']} {objectID}"
-            cv2.putText(annotated_frame, label, (start_x, start_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            cv2.circle(annotated_frame, (c_x, c_y), 4, color, -1)
-
-        return annotated_frame, self.state
+            # Draw BBox
+            if obj.bbox:
+                bx1, by1, bx2, by2 = obj.bbox
+                cv2.rectangle(annotated_frame, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+                
+            # Draw ID
+            cv2.putText(annotated_frame, f"ID: {obj_id}", (cx - 10, cy - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.circle(annotated_frame, (cx, cy), 4, (0, 255, 0), -1)
 
         return annotated_frame, self.state

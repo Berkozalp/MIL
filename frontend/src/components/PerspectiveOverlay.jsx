@@ -51,12 +51,12 @@ const PerspectiveOverlay = ({ isActive, onSave, savedPoints }) => {
     return (
         <div
             ref={containerRef}
-            className="absolute inset-0 z-40"
+            className="perspective-container"
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
         >
-            <svg className="w-full h-full absolute inset-0 pointer-events-none">
+            <svg className="width-full height-full" style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                 {/* Polygon connecting the 4 points */}
                 <polygon
                     points={points.map(p => `${p.x}%,${p.y}%`).join(' ')}
@@ -77,7 +77,7 @@ const PerspectiveOverlay = ({ isActive, onSave, savedPoints }) => {
             {points.map((p, i) => (
                 <div
                     key={i}
-                    className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full bg-cyan-500 border-2 border-white cursor-pointer hover:scale-125 transition-transform shadow-[0_0_15px_rgba(6,182,212,0.5)] flex items-center justify-center font-bold text-xs text-black"
+                    className="corner-handle"
                     style={{ left: `${p.x}%`, top: `${p.y}%`, pointerEvents: 'auto' }}
                     onMouseDown={(e) => handleMouseDown(i, e)}
                 >
@@ -86,18 +86,18 @@ const PerspectiveOverlay = ({ isActive, onSave, savedPoints }) => {
             ))}
 
             {/* Instruction / Save Panel */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 pointer-events-auto">
-                <div className="bg-black/80 backdrop-blur text-cyan-400 px-6 py-3 rounded-xl border border-cyan-500/30 flex items-center gap-4">
-                    <span className="font-mono text-sm font-bold">🎯 DRAG CORNERS TO MATCH ROAD PERSPECTIVE</span>
+            <div className="calibration-panel">
+                <div className="calibration-box">
+                    <span className="calibration-text">🎯 DRAG CORNERS TO MATCH ROAD PERSPECTIVE</span>
                     <button
                         onClick={() => onSave(points)}
-                        className="bg-cyan-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-cyan-400 transition-colors shadow-lg"
+                        className="btn-save-calib"
                     >
                         SAVE CALIBRATION
                     </button>
                     <button
                         onClick={() => setPoints(defaultPoints)}
-                        className="text-white/60 hover:text-white text-xs underline"
+                        className="btn-reset-calib"
                     >
                         Reset
                     </button>

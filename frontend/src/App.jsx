@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import DashboardOverlay from './components/DashboardOverlay';
 import MaskOverlay from './components/MaskOverlay';
 import PerspectiveOverlay from './components/PerspectiveOverlay';
+import './App.css';
 
 function App() {
   const [stats, setStats] = useState({ total_in: 0, total_out: 0, currently_tracked: 0 });
@@ -83,13 +84,13 @@ function App() {
   }, []);
 
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden font-sans select-none">
+    <div className="app-container">
       {/* 1. Full Screen Video Feed (Background) */}
-      <div className="absolute inset-0 z-0">
+      <div className="video-background">
         <img
           src="http://localhost:8000/video_feed"
           alt="Live Feed"
-          className="w-full h-full object-cover"
+          className="video-feed"
           onError={(e) => {
             setTimeout(() => {
               e.target.src = "http://localhost:8000/video_feed?t=" + Date.now();
@@ -99,7 +100,7 @@ function App() {
       </div>
 
       {/* 2. Aesthetic Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 pointer-events-none z-10" />
+      <div className="gradient-overlay" />
 
       {/* 3. Overlays based on Mode */}
       {mode === 'MASK' && (
@@ -122,29 +123,25 @@ function App() {
       )}
 
       {/* 5. Main Control UI (Top Left Title & Mode Switchers) */}
-      <div className="absolute top-8 left-8 z-50 flex flex-col gap-6">
+      <div className="header-container">
         <div>
-          <h1 className="text-4xl font-black italic text-white tracking-tighter drop-shadow-2xl">
-            URBAN<span className="text-cyan-400">FLOW</span> AI
+          <h1 className="app-title">
+            URBAN<span>FLOW</span> AI
           </h1>
-          <div className="text-[10px] font-mono text-cyan-200/60 uppercase tracking-[0.4em] ml-1">Real-time Analytics</div>
+          <div className="app-subtitle">Real-time Analytics</div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="controls-row">
           <button
             onClick={() => setMode(mode === 'MASK' ? 'LIVE' : 'MASK')}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all border backdrop-blur-md flex items-center gap-2 ${mode === 'MASK'
-              ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-              : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-white/20'}`}
+            className={`btn-mode ${mode === 'MASK' ? 'active-mask' : ''}`}
           >
             <span>{mode === 'MASK' ? 'SAVE & EXIT' : 'ROI MASK'}</span>
           </button>
 
           <button
             onClick={() => setMode(mode === 'CALIB' ? 'LIVE' : 'CALIB')}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all border backdrop-blur-md flex items-center gap-2 ${mode === 'CALIB'
-              ? 'bg-cyan-500 text-black border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-              : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-white/20'}`}
+            className={`btn-mode ${mode === 'CALIB' ? 'active-calib' : ''}`}
           >
             <span>{mode === 'CALIB' ? 'SAVE & EXIT' : 'CALIBRATE'}</span>
           </button>
@@ -152,9 +149,9 @@ function App() {
       </div>
 
       {/* 6. Status Indicator (Bottom Left) */}
-      <div className="absolute bottom-8 left-8 z-50 flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/5">
-        <div className={`w-2 h-2 rounded-full shadow-[0_0_10px_currentColor] ${isConnected ? 'bg-emerald-500 text-emerald-500 animate-pulse' : 'bg-rose-500 text-rose-500'}`} />
-        <span className="text-[10px] font-mono font-bold text-white/80 tracking-widest uppercase">
+      <div className="status-indicator">
+        <div className={`status-dot ${isConnected ? 'online' : 'offline'}`} />
+        <span className="status-text">
           {isConnected ? 'System Online' : 'Connecting...'}
         </span>
       </div>

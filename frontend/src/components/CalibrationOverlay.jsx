@@ -159,17 +159,15 @@ const CalibrationOverlay = () => {
     return (
         <div
             ref={containerRef}
-            className="absolute inset-0"
-            style={{ zIndex: 100 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 100 }}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
         >
             {/* SVG Grid */}
             <svg
-                className="absolute inset-0 w-full h-full cursor-move"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'move', pointerEvents: 'auto' }}
                 onMouseDown={handleGridMouseDown}
-                style={{ pointerEvents: 'auto' }}
             >
                 {generateGridLines()}
             </svg>
@@ -178,29 +176,42 @@ const CalibrationOverlay = () => {
             {showCorners && Object.entries(corners).map(([key, pos]) => (
                 <div
                     key={key}
-                    className="absolute cursor-grab active:cursor-grabbing transition-transform hover:scale-125"
                     style={{
+                        position: 'absolute',
+                        cursor: 'grab',
                         left: `${pos.x}%`,
                         top: `${pos.y}%`,
                         transform: 'translate(-50%, -50%)',
                         zIndex: 200,
-                        pointerEvents: 'auto'
+                        pointerEvents: 'auto',
+                        transition: 'transform 0.1s'
                     }}
                     onMouseDown={(e) => handleCornerMouseDown(key, e)}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.25)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)'}
                 >
                     <div
-                        className="rounded-full border-2 transition-all"
                         style={{
+                            borderRadius: '50%',
+                            border: '2px solid #ffffff',
                             backgroundColor: draggingCorner === key ? '#ff0000' : gridColor,
-                            borderColor: '#ffffff',
                             boxShadow: '0 0 10px rgba(0,0,0,0.8)',
                             width: draggingCorner === key ? '24px' : '18px',
-                            height: draggingCorner === key ? '24px' : '18px'
+                            height: draggingCorner === key ? '24px' : '18px',
+                            transition: 'all 0.1s'
                         }}
                     />
                     <div
-                        className="absolute top-6 left-1/2 transform -translate-x-1/2 text-xs font-mono px-2 py-1 rounded whitespace-nowrap"
                         style={{
+                            position: 'absolute',
+                            top: '1.5rem',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            whiteSpace: 'nowrap',
                             backgroundColor: 'rgba(0,0,0,0.8)',
                             color: gridColor,
                         }}
@@ -211,14 +222,13 @@ const CalibrationOverlay = () => {
             ))}
 
             {/* Control Panel */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2" style={{ zIndex: 300 }}>
+            <div className="grid-controls-panel">
                 <button
                     onClick={() => setShowSettings(!showSettings)}
-                    className="px-4 py-2 rounded-lg font-semibold transition-all hover:scale-105 backdrop-blur"
+                    className="btn-grid-settings"
                     style={{
                         backgroundColor: 'rgba(0,0,0,0.8)',
-                        color: gridColor,
-                        pointerEvents: 'auto'
+                        color: gridColor
                     }}
                 >
                     ⚙️ Settings
@@ -226,27 +236,26 @@ const CalibrationOverlay = () => {
 
                 {showSettings && (
                     <div
-                        className="px-4 py-3 rounded-lg font-mono text-sm space-y-3"
+                        className="grid-settings-popup"
                         style={{
                             backgroundColor: 'rgba(0,0,0,0.9)',
                             color: '#ffffff',
-                            pointerEvents: 'auto',
-                            minWidth: '200px'
+                            pointerEvents: 'auto'
                         }}
                     >
                         <div>
-                            <label className="block text-xs mb-1">Grid Size: {gridSize}</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Grid Size: {gridSize}</label>
                             <input
                                 type="range"
                                 min="5"
                                 max="50"
                                 value={gridSize}
                                 onChange={(e) => setGridSize(parseInt(e.target.value))}
-                                className="w-full"
+                                style={{ width: '100%' }}
                             />
                         </div>
                         <div>
-                            <label className="block text-xs mb-1">Opacity: {gridOpacity.toFixed(1)}</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Opacity: {gridOpacity.toFixed(1)}</label>
                             <input
                                 type="range"
                                 min="0"
@@ -254,37 +263,36 @@ const CalibrationOverlay = () => {
                                 step="0.1"
                                 value={gridOpacity}
                                 onChange={(e) => setGridOpacity(parseFloat(e.target.value))}
-                                className="w-full"
+                                style={{ width: '100%' }}
                             />
                         </div>
                         <div>
-                            <label className="block text-xs mb-1">Color</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Color</label>
                             <input
                                 type="color"
                                 value={gridColor}
                                 onChange={(e) => setGridColor(e.target.value)}
-                                className="w-full h-8 rounded cursor-pointer"
+                                style={{ width: '100%', height: '2rem', borderRadius: '0.25rem', cursor: 'pointer' }}
                             />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <input
                                 type="checkbox"
                                 checked={showCorners}
                                 onChange={(e) => setShowCorners(e.target.checked)}
                                 id="showCorners"
                             />
-                            <label htmlFor="showCorners" className="text-xs">Show Corners</label>
+                            <label htmlFor="showCorners" style={{ fontSize: '0.75rem' }}>Show Corners</label>
                         </div>
                     </div>
                 )}
 
                 <button
                     onClick={resetGrid}
-                    className="px-4 py-2 rounded-lg font-semibold transition-all hover:scale-105"
+                    className="btn-grid-settings"
                     style={{
                         backgroundColor: 'rgba(255,0,0,0.8)',
-                        color: 'white',
-                        pointerEvents: 'auto'
+                        color: 'white'
                     }}
                 >
                     Reset Grid
@@ -293,8 +301,14 @@ const CalibrationOverlay = () => {
 
             {/* Instructions */}
             <div
-                className="absolute bottom-4 left-4 px-4 py-3 rounded-lg font-mono text-sm"
                 style={{
+                    position: 'absolute',
+                    bottom: '1rem',
+                    left: '1rem',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
                     backgroundColor: 'rgba(0,0,0,0.8)',
                     color: gridColor,
                     zIndex: 300,
@@ -302,7 +316,7 @@ const CalibrationOverlay = () => {
                     maxWidth: '300px'
                 }}
             >
-                <div className="font-bold mb-2">Calibration Controls:</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Calibration Controls:</div>
                 <div>• Drag corners to warp perspective</div>
                 <div>• Drag grid to move position</div>
                 <div>• Use settings to adjust appearance</div>

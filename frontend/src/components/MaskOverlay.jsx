@@ -45,8 +45,8 @@ const MaskOverlay = ({ isActive, onSave, savedMask = [] }) => {
     };
 
     return (
-        <div className="absolute inset-0 z-30 pointer-events-auto cursor-crosshair" onClick={handleCanvasClick}>
-            <svg className="w-full h-full">
+        <div className="mask-overlay-container" onClick={handleCanvasClick}>
+            <svg className="width-full height-full" style={{ width: '100%', height: '100%' }}>
                 {/* Polygon Mask */}
                 {points.length > 0 && (
                     <polygon
@@ -76,36 +76,38 @@ const MaskOverlay = ({ isActive, onSave, savedMask = [] }) => {
                         cy={`${p.y}%`}
                         r="6"
                         fill={i === 0 ? "#ff0000" : "#00ff00"}
-                        className="hover:scale-150 transition-transform cursor-pointer"
+                        style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                        onMouseEnter={(e) => e.target.style.transform = 'scale(1.5)'}
+                        onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                         onContextMenu={(e) => handlePointRightClick(i, e)}
                     />
                 ))}
             </svg>
 
             {/* Controls */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-4 z-50">
+            <div className="mask-controls">
                 <button
                     onClick={(e) => { e.stopPropagation(); clearMask(); }}
-                    className="bg-black/60 backdrop-blur-md text-white px-8 py-3 rounded-xl border border-white/10 hover:bg-white/10 transition-all font-bold tracking-widest uppercase text-xs shadow-xl"
+                    className="btn-clear"
                 >
                     Clear All
                 </button>
                 <button
                     onClick={(e) => { e.stopPropagation(); onSave(points); }}
-                    className="bg-green-500/80 backdrop-blur-md text-black px-10 py-3 rounded-xl font-black hover:bg-green-400 transition-all shadow-[0_0_30px_rgba(34,197,94,0.3)] tracking-widest uppercase text-xs"
+                    className="btn-save-mask"
                 >
                     Save Mask
                 </button>
             </div>
 
             {/* Hint */}
-            <div className="absolute bottom-10 left-10 bg-black/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 text-white/90 font-mono text-xs pointer-events-none shadow-2xl max-w-xs transition-opacity duration-500">
-                <p className="font-bold text-green-400 mb-3 tracking-tighter text-sm">MASKING WORKFLOW</p>
-                <ul className="space-y-2 opacity-80">
-                    <li>• <span className="text-white font-bold">CLICK</span> to plot path points</li>
-                    <li>• <span className="text-red-400 font-bold">CLICK RED POINT</span> to close loop</li>
-                    <li>• <span className="text-white font-bold">RIGHT-CLICK</span> points to delete</li>
-                    <li>• Analysis only active <span className="text-green-400 italic">INSIDE</span> zone</li>
+            <div className="mask-hint">
+                <p className="mask-hint-title">MASKING WORKFLOW</p>
+                <ul className="mask-hint-list">
+                    <li>• <span style={{ color: 'white', fontWeight: 'bold' }}>CLICK</span> to plot path points</li>
+                    <li>• <span style={{ color: '#f87171', fontWeight: 'bold' }}>CLICK RED POINT</span> to close loop</li>
+                    <li>• <span style={{ color: 'white', fontWeight: 'bold' }}>RIGHT-CLICK</span> points to delete</li>
+                    <li>• Analysis only active <span style={{ color: '#4ade80', fontStyle: 'italic' }}>INSIDE</span> zone</li>
                 </ul>
             </div>
         </div>
