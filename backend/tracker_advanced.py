@@ -53,18 +53,37 @@ class AdvancedTracker:
     def deregister(self, obj_id):
         del self.objects[obj_id]
 
-    def update(self, detections):
+        return self.objects
+
+    def update(self, detections, camera_shift=(0, 0), projector=None, frame_width=1280, frame_height=720, fps=30):
         """
         updates track with new detections.
         detections: list of tuples (centroid, bbox)
             centroid: (x, y)
             bbox: (x1, y1, x2, y2) normalized 0-1
+        camera_shift: (dx, dy) how much the background moved since last frame
+        projector: CameraProjector instance for 3D projection
         """
         
         # 1. Predict new positions for existing objects
+        # Compensation: shift existing tracks by the camera movement
         for obj_id, obj in self.objects.items():
+            # Apply camera compensation to the state BEFORE prediction
+            # If scene moved by (dx, dy), the object should also move by (dx, dy) 
+            # effectively keeping it 'still' relative to the world, but moving in pixel coords
+            
+            # Update history to shift with camera
+            obj.history = [(h[0] + camera_shift[0], h[1] + camera_shift[1]) for h in obj.history]
+            
+            # Shift centroid and Kalman state
+            shift_matrix = np.array([[camera_shift[0]], [camera_shift[1]], [0], [0]], np.float32)
+            obj.kalman.statePost += shift_matrix
+            
             obj.predict()
             obj.disappeared_count += 1
+            
+            # Decay speed if not updated
+            obj.current_speed = getattr(obj, 'current_speed', 0) * 0.95
 
         if len(detections) == 0:
             # If no detections, mark all as disappeared
@@ -101,6 +120,63 @@ class AdvancedTracker:
                     continue
 
                 object_id = object_ids[row]
+                
+                # --- SPEED CALCULATION START ---
+                # We use the corrected centroid vs new input centroid, removing camera shift influence
+                # The 'prev_c' from the tracker is where the object WAS in the previous frame's coordinate system.
+                # 'new_c' is where it IS in the current frame's coordinate system.
+                # BUT, the camera itself moved. 'camera_shift' tells us how much the WORLD moved in the camera view (roughly).
+                # Actually, simpler logic:
+                # 1. Take previous centroid (before this frame update, but ALREADY COMPENSATED for camera move?)
+                # NO. The tracker prediction step (above) shifted the old centroid by `camera_shift`.
+                # So `self.objects[object_id].centroid` is now an ESTIMATE of where the object should be 
+                # in the CURRENT frame coordinates if it didn't move in the world.
+                # `new_c` is where it actually IS in the CURRENT frame coordinates.
+                # So the difference `new_c - obj.centroid` is the motion of the object RELATIVE TO THE GROUND (in pixels).
+                
+                prev_c_compensated = self.objects[object_id].centroid 
+                new_c = input_centroids[col]
+                
+                # Pixel vector
+                vec_px = new_c - prev_c_compensated
+                
+                real_speed_kmh = 0.0
+                
+                if projector and frame_width > 0:
+                    # Project both points to ground
+                    # Point A: Estimated position if it stood still (Compensated Old Pos)
+                    p1_ground = projector.pixel_to_ground(prev_c_compensated[0], prev_c_compensated[1], frame_width, frame_height)
+                    # Point B: Actual new position
+                    p2_ground = projector.pixel_to_ground(new_c[0], new_c[1], frame_width, frame_height)
+                    
+                    if p1_ground is not None and p2_ground is not None:
+                        # Distance in meters
+                        dx = p2_ground[0] - p1_ground[0]
+                        dz = p2_ground[1] - p1_ground[1]
+                        dist_m = np.sqrt(dx*dx + dz*dz)
+                        
+                        # Speed = Distance / Time
+                        # FPS is frames per second. 
+                        # Frame time = 1/FPS
+                        # Speed (m/s) = dist_m * FPS
+                        speed_mps = dist_m * fps
+                        real_speed_kmh = speed_mps * 3.6
+                else:
+                    # Fallback to pixel speed estimation (rough)
+                    pixel_speed = np.linalg.norm(vec_px)
+                    # Rough scale: 100px ~ 1m? Very inaccurate without depth
+                    real_speed_kmh = pixel_speed * 0.1 # dummy scale
+                
+                # Smooth speed
+                old_speed = getattr(self.objects[object_id], 'current_speed', 0)
+                # Filter out crazy jumps (e.g. tracking error) - cap at 40 km/h change per frame?
+                if real_speed_kmh > 45: # Mbappé max speed ~38km/h. 
+                     real_speed_kmh = old_speed # Ignore outliers
+                
+                self.objects[object_id].current_speed = 0.8 * old_speed + 0.2 * real_speed_kmh
+                
+                # --- SPEED CALCULATION END ---
+
                 self.objects[object_id].update(input_centroids[col], detections[col][1])
 
                 used_rows.add(row)

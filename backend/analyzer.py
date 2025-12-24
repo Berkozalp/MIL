@@ -1,24 +1,14 @@
 import cv2
-import mediapipe as mp
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict
 import os
 from tracker import CentroidTracker
-
-# MediaPipe Tasks API
-BaseOptions = mp.tasks.BaseOptions
-ObjectDetector = mp.tasks.vision.ObjectDetector
-ObjectDetectorOptions = mp.tasks.vision.ObjectDetectorOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
-
-@dataclass
-class DetectionResult:
-    id: int
-    bbox: Tuple[int, int, int, int] # x, y, w, h
-    category: str
-    score: float
-    center: Tuple[int, int]
+from camera_geometry import CameraProjector
+from calibration import load_calibration
+from detector_base import DetectorBase
+from detector_mediapipe import MediaPipeDetector
+from detector_yolov8 import YOLOv8Detector
 
 @dataclass
 class AnalyticState:
@@ -28,31 +18,58 @@ class AnalyticState:
     fps: float = 0.0
 
 class UrbanFlowAnalyzer:
-    def __init__(self, model_path: str = "efficientdet_lite0.tflite"):
-        if not os.path.exists(model_path):
-            print(f"Warning: Model {model_path} not found. Object detection will fail.")
-
-        # Use new MediaPipe Tasks API
-        import mediapipe as mp
-        BaseOptions = mp.tasks.BaseOptions
-        ObjectDetector = mp.tasks.vision.ObjectDetector
-        ObjectDetectorOptions = mp.tasks.vision.ObjectDetectorOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
-
-        options = ObjectDetectorOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
-            max_results=20,
-            score_threshold=0.4,
-            running_mode=VisionRunningMode.IMAGE
-        )
-        self.detector = ObjectDetector.create_from_options(options)
+    def __init__(self, detector_type: str = "mediapipe", detector_settings: dict = None):
+        """
+        Initialize analyzer with specified detector
+        
+        Args:
+            detector_type: 'mediapipe' or 'yolov8'
+            detector_settings: dict of detector-specific settings
+        """
+        # Initialize detector
+        self.detector_type = detector_type
+        self.detector = self._create_detector(detector_type, detector_settings or {})
         
         from tracker_advanced import AdvancedTracker
         self.tracker = AdvancedTracker(max_disappeared=40, max_distance=100)
         
+        from camera_motion import CameraMotionEstimator
+        self.motion_estimator = CameraMotionEstimator()
+        
         self.state = AnalyticState()
         self.roi_polygon = None 
-        self.score_threshold = 0.4
+        self.calibration_matrix = None # Homography matrix
+        
+        # Initialize Projector with Defaults or Calibration
+        calib = load_calibration()
+        self.projector = CameraProjector(
+            fov_vertical=calib.cam_fov or 50.0,
+            cam_height=calib.cam_height or 15.0,
+            pitch_deg=calib.cam_pitch or -30.0
+        )
+    
+    def _create_detector(self, detector_type: str, settings: dict) -> DetectorBase:
+        """Create detector instance based on type"""
+        if detector_type == "mediapipe":
+            return MediaPipeDetector(
+                score_threshold=settings.get('score_threshold', 0.25),
+                max_results=settings.get('max_results', 20)
+            )
+        elif detector_type == "yolov8":
+            return YOLOv8Detector(
+                confidence=settings.get('confidence', 0.25),
+                iou_threshold=settings.get('iou_threshold', 0.45),
+                model_size=settings.get('model_size', 'n')
+            )
+        else:
+            raise ValueError(f"Unknown detector type: {detector_type}")
+    
+    def set_detector(self, detector_type: str, settings: dict = None):
+        """Switch to a different detector"""
+        print(f"Switching detector to: {detector_type}")
+        self.detector_type = detector_type
+        self.detector = self._create_detector(detector_type, settings or {})
+
 
     def update_settings(self, settings: dict):
         if 'maxDistance' in settings:
@@ -64,39 +81,30 @@ class UrbanFlowAnalyzer:
 
     def update_roi(self, points: List[dict]):
         self.roi_polygon = [(int(p['x']), int(p['y'])) for p in points]
+        
+    def update_calibration(self, matrix):
+        self.calibration_matrix = matrix
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, AnalyticState]:
         h_orig, w_orig = frame.shape[:2]
         
-        # Convert to RGB and MP Image
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        # 1. Estimate Camera Motion
+        camera_shift = self.motion_estimator.estimate_motion(frame)
         
-        detection_result = self.detector.detect(mp_image)
+        # 2. Run Detection using current detector
+        detected_objects = self.detector.detect(frame)
         
         detections = [] # List of ((cx, cy), bbox)
         
-        # Apply ROI Mask if defined (Optimization: Mask frame before detection? 
-        # MP Tasks doesn't support mask input directly easily without image manipulation.
-        # We process all, then filter.)
         mask = None
         if self.roi_polygon and len(self.roi_polygon) > 2:
             mask = np.zeros((h_orig, w_orig), dtype=np.uint8)
             roi_pts = np.array([[(p[0] * w_orig // 100, p[1] * h_orig // 100)] for p in self.roi_polygon], dtype=np.int32)
             cv2.fillPoly(mask, [roi_pts], 255)
 
-        for detection in detection_result.detections:
-            category = detection.categories[0]
-            # Filter for PERSON only
-            if category.category_name != 'person':
-                continue
-            if category.score < self.score_threshold:
-                continue
-                
-            bbox = detection.bounding_box
-            x, y, w, h = bbox.origin_x, bbox.origin_y, bbox.width, bbox.height
-            
-            cx, cy = x + w//2, y + h//2
+        for detection in detected_objects:
+            x, y, w, h = detection.bbox
+            cx, cy = detection.center
             
             # ROI Filter
             if mask is not None:
@@ -106,10 +114,16 @@ class UrbanFlowAnalyzer:
             # Format for tracker: ((cx, cy), (x, y, x+w, y+h))
             detections.append(((cx, cy), (x, y, x+w, y+h)))
             
-        # Update tracker
-        tracked_objects = self.tracker.update(detections)
+        # Update tracker with Motion Compensation
+        # Pass projector for speed estimation
+        tracked_objects = self.tracker.update(detections, camera_shift, self.projector, w_orig, h_orig, fps=25)
         
         annotated_frame = frame.copy()
+        
+        # Visualize Camera Motion (Optional Debug)
+        # if camera_shift != (0,0):
+        #     cv2.arrowedLine(annotated_frame, (w_orig//2, h_orig//2), 
+        #                     (int(w_orig//2 + camera_shift[0]), int(h_orig//2 + camera_shift[1])), (0, 0, 255), 2)
         
         # Draw ROI overlay
         if self.roi_polygon and len(self.roi_polygon) > 2:
@@ -119,6 +133,7 @@ class UrbanFlowAnalyzer:
         # Filter logic: Count IN vs OUT based on ROI?
         # For now, just count tracked objects
         self.state.currently_tracked = len(tracked_objects)
+
         
         # Draw Objects
         for obj_id, obj in tracked_objects.items():
@@ -135,9 +150,18 @@ class UrbanFlowAnalyzer:
                 bx1, by1, bx2, by2 = obj.bbox
                 cv2.rectangle(annotated_frame, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
                 
+            # Speed Calculation
+            real_speed_kmh = getattr(obj, 'current_speed', 0.0)
+            
             # Draw ID
-            cv2.putText(annotated_frame, f"ID: {obj_id}", (cx - 10, cy - 10),
+            cv2.putText(annotated_frame, f"ID: {obj_id}", (cx - 10, cy - 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        
+            # Draw Speed
+            speed_text = f"{real_speed_kmh:.1f} km/h"
+            cv2.putText(annotated_frame, speed_text, (cx - 20, cy - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                        
             cv2.circle(annotated_frame, (cx, cy), 4, (0, 255, 0), -1)
 
         return annotated_frame, self.state

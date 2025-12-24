@@ -1,25 +1,31 @@
-# Universal Memory - Urban Flow AI
+# Universal Memory - Motion Image Learner
 
 ## Mevcut Aşama
-- **Durum:** Canlı Takip & Dashboard (Live Tracking & Dashboard)
+- **Durum:** Revize Plan Uygulaması (Revised Plan Implementation)
 - **Tarih:** 2025-12-24
-- **Özet:** Gerçek zamanlı nesne takibi, giriş/çıkış sayımı ve WebSocket tabanlı dashboard tamamlandı.
+- **Özet:** Branding "Motion Image Learner" olarak güncellendi, video kontrolleri eklendi, detection threshold 0.25'te doğrulandı.
 
 ## Teknik Kararlar (Stack)
-- **Takip Algoritması:** Centroid Tracker (Euclidean Distance).
-- **Sayım:** Sanal çizgi (Tripwire) geçişi ve yön tespiti (vektörel).
+- **Takip Algoritması:** Advanced Tracker with Motion Compensation.
+- **Detection Threshold:** 0.25 (balanced for general use).
+- **ROI Sistemi:** Universal (works for both city and sports scenarios).
+- **Video Kontrolleri:** ±15s seek buttons.
 - **Video Yayını:** MJPEG (Low latency, HTTP multipart).
 - **Veri Yayını:** WebSocket (`ws://localhost:8000/ws`).
-- **UI:** React + TailwindCSS + StatsOverlay bileşeni.
+- **UI:** React + TailwindCSS + Modern Components.
 
-## Karşılaşılan Engeller ve Çözümler
-- **Pip Path Sorunu:** PowerShell'de `pip` yerine `python -m pip` kullanıldı.
-- **Cache:** MJPEG stream mimarisi ile cache sorunları önlendi.
+## Son Değişiklikler (2025-12-24)
+- **Branding:** "Motion Image Learner" olarak güncellendi (backend, frontend, HTML title).
+- **Video Kontrolleri:** VideoControls component oluşturuldu, ±15s seek butonları eklendi.
+- **Backend:** `/seek` endpoint eklendi, Streamer class'a seek metodu eklendi.
+- **ROI:** Field segmentation kaldırıldı, ROI sistemi evrensel olarak çalışıyor.
 
 ## Bir Sonraki Adım
-- Kullanıcının sistemi canlı olarak test etmesi.
-- Gerekirse performans optimizasyonu (Skip frames ayarı vs.).
-- Uzun vadeli veritabanı kaydı (sqlite/postgres) eklenebilir.
+- Kullanıcının sistemi test etmesi.
+- Video kontrollerinin çalışmasını doğrulama.
+- Gerekirse performans optimizasyonu.
 
 ## Notlar
-- `roi_config.json` ile ROI ve Tripwire ayarları değiştirilebilir.
+- Detection threshold zaten 0.25'te (analyzer.py line 60).
+- `roi_config.json` ile ROI ayarları değiştirilebilir.
+

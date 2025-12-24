@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import DashboardOverlay from './components/DashboardOverlay';
 import MaskOverlay from './components/MaskOverlay';
 import PerspectiveOverlay from './components/PerspectiveOverlay';
+import VideoControls from './components/VideoControls';
 import './App.css';
 
 function App() {
@@ -62,6 +63,17 @@ function App() {
       });
       console.log('Calibration saved');
       setMode('LIVE');
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSeek = async (seconds) => {
+    try {
+      await fetch('http://localhost:8000/seek', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seconds }),
+      });
+      console.log(`Seeked ${seconds}s`);
     } catch (e) { console.error(e); }
   };
 
@@ -126,7 +138,7 @@ function App() {
       <div className="header-container">
         <div>
           <h1 className="app-title">
-            URBAN<span>FLOW</span> AI
+            MOTION<span>IMAGE</span> LEARNER
           </h1>
           <div className="app-subtitle">Real-time Analytics</div>
         </div>
@@ -148,7 +160,15 @@ function App() {
         </div>
       </div>
 
-      {/* 6. Status Indicator (Bottom Left) */}
+      {/* 6. Video Controls (Bottom Center) */}
+      {mode === 'LIVE' && (
+        <VideoControls
+          onSeekBackward={() => handleSeek(-15)}
+          onSeekForward={() => handleSeek(15)}
+        />
+      )}
+
+      {/* 7. Status Indicator (Bottom Left) */}
       <div className="status-indicator">
         <div className={`status-dot ${isConnected ? 'online' : 'offline'}`} />
         <span className="status-text">

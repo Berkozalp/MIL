@@ -12,6 +12,11 @@ class CalibrationSettings(BaseModel):
     # Legacy/Future support (optional)
     real_width: Optional[float] = 10.0 # Real world width in meters
     real_height: Optional[float] = 20.0 # Real world height in meters
+    
+    # Camera Extrinsics/Intrinsics for Ground Projection
+    cam_height: Optional[float] = 15.0 # meters
+    cam_pitch: Optional[float] = -30.0 # degrees
+    cam_fov: Optional[float] = 50.0 # degrees vertical
 
 CALIBRATION_FILE = "calibration_config.json"
 

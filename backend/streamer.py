@@ -8,12 +8,19 @@ from capture_frame import get_stream_url, VIDEO_URL
 
 class Streamer:
     def __init__(self):
-        self.analyzer = UrbanFlowAnalyzer()
+        # Load config first to get model settings
+        config = self._load_config_file()
+        
+        # Initialize analyzer with configured model
+        detector_type = config.get("detection_model", "mediapipe")
+        detector_settings = config.get(f"{detector_type}_settings", {})
+        self.analyzer = UrbanFlowAnalyzer(detector_type, detector_settings)
+        
         self.active_websockets = []
         self.current_stats = {}
         
         # Singleton Capture State
-        self.current_url = "https://www.youtube.com/watch?v=u4UZ4UvZXrg" # Default
+        self.current_url = config.get("video_url", "https://www.youtube.com/watch?v=u4UZ4UvZXrg")
         self.cap = None
         self.running = False
         self.lock = asyncio.Lock()
@@ -21,18 +28,23 @@ class Streamer:
         self.latest_jpeg = None
         
         # Configuration
-        self.skip_frames = 2
-        self.load_config()
+        self.skip_frames = config.get("skip_frames", 2)
 
-    def load_config(self):
+    def _load_config_file(self):
+        """Load configuration from file"""
         try:
             with open("roi_config.json", "r") as f:
-                config = json.load(f)
-                self.skip_frames = config.get("skip_frames", 2)
-                if "video_url" in config and config["video_url"]:
-                    self.current_url = config["video_url"]
+                return json.load(f)
         except Exception as e:
             print(f"Error loading config: {e}")
+            return {}
+
+    def load_config(self):
+        """Reload configuration"""
+        config = self._load_config_file()
+        self.skip_frames = config.get("skip_frames", 2)
+        if "video_url" in config and config["video_url"]:
+            self.current_url = config["video_url"]
 
     async def add_websocket(self, websocket):
         await websocket.accept()
@@ -87,6 +99,21 @@ class Streamer:
                 json.dump(data, f, indent=4)
         except:
             pass
+
+    def seek(self, seconds):
+        """Seek video by specified seconds (positive or negative)"""
+        if self.cap and self.cap.isOpened():
+            try:
+                # Get current position in milliseconds
+                current_pos = self.cap.get(cv2.CAP_PROP_POS_MSEC)
+                # Calculate new position
+                new_pos = max(0, current_pos + (seconds * 1000))
+                # Set new position
+                self.cap.set(cv2.CAP_PROP_POS_MSEC, new_pos)
+                print(f"Seeked {seconds}s to position {new_pos}ms")
+            except Exception as e:
+                print(f"Seek error: {e}")
+
 
     def _capture_loop(self):
         print(f"Starting capture loop for {self.current_url}")
