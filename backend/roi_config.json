@@ -31,12 +31,12 @@
     "video_url": "https://www.youtube.com/watch?v=9x02ovOrZmM",
     "detection_model": "mediapipe",
     "mediapipe_settings": {
-        "score_threshold": 0.25,
-        "max_results": 20
+        "score_threshold": 0.3,
+        "max_results": 10
     },
     "yolov8_settings": {
-        "confidence": 0.5,
-        "iou_threshold": 0.2,
+        "confidence": 0.3,
+        "iou_threshold": 0.45,
         "model_size": "n"
     }
 }

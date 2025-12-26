@@ -9,11 +9,29 @@ class TrackedObject:
         self.history = [self.centroid]
         self.disappeared_count = 0
         self.age = 0
-        # Kalman Filter for smoothing (Simple implementation)
+        self.current_speed = 0.0
+        self.speed_history = []
+        
+        # Kalman Filter for smoothing (Optimized Parameters)
         self.kalman = cv2.KalmanFilter(4, 2)
+        # Measurement matrix (we only measure x, y)
         self.kalman.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+        # Transition matrix (constant velocity model)
         self.kalman.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
-        self.kalman.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
+        
+        # Process noise: assume objects can change velocity reasonably fast
+        self.kalman.processNoiseCov = np.array([
+            [0.1, 0, 0, 0], 
+            [0, 0.1, 0, 0], 
+            [0, 0, 0.2, 0], 
+            [0, 0, 0, 02.]
+        ], np.float32) * 0.05
+        
+        # Measurement noise: detectors are usually pretty accurate, but can jitter
+        self.kalman.measurementNoiseCov = np.array([
+            [0.5, 0],
+            [0, 0.5]
+        ], np.float32) * 0.1
         
         # Initial state
         self.kalman.statePre = np.array([[centroid[0]], [centroid[1]], [0], [0]], np.float32)
@@ -102,8 +120,8 @@ class AdvancedTracker:
             object_ids = list(self.objects.keys())
             object_centroids = np.array([obj.centroid for obj in self.objects.values()])
 
-            # Calculate distances (Euclidean)
-            D = self._dist_matrix(object_centroids, input_centroids)
+            # Calculate robust distance matrix (Euclidean + IoU)
+            D = self._dist_matrix(object_centroids, object_bboxes, input_centroids, input_bboxes)
 
             # hungarian algorithm like matching (simple greedy here based on sort)
             rows = D.min(axis=1).argsort()
@@ -167,13 +185,12 @@ class AdvancedTracker:
                     # Rough scale: 100px ~ 1m? Very inaccurate without depth
                     real_speed_kmh = pixel_speed * 0.1 # dummy scale
                 
-                # Smooth speed
-                old_speed = getattr(self.objects[object_id], 'current_speed', 0)
-                # Filter out crazy jumps (e.g. tracking error) - cap at 40 km/h change per frame?
-                if real_speed_kmh > 45: # Mbappé max speed ~38km/h. 
-                     real_speed_kmh = old_speed # Ignore outliers
+                # Smooth speed using helpers (rolling average)
+                self.objects[object_id].speed_history.append(real_speed_kmh)
+                if len(self.objects[object_id].speed_history) > 10:
+                    self.objects[object_id].speed_history.pop(0)
                 
-                self.objects[object_id].current_speed = 0.8 * old_speed + 0.2 * real_speed_kmh
+                self.objects[object_id].current_speed = np.mean(self.objects[object_id].speed_history)
                 
                 # --- SPEED CALCULATION END ---
 
@@ -194,6 +211,40 @@ class AdvancedTracker:
 
         return self.objects
     
-    def _dist_matrix(self, A, B):
-        # A: (N, 2), B: (M, 2) -> returns (N, M) distance matrix
-        return np.linalg.norm(A[:, None, :] - B[None, :, :], axis=2)
+    def _dist_matrix(self, object_centroids, object_bboxes, input_centroids, input_bboxes):
+        # Euclidean distance matrix
+        D_euc = np.linalg.norm(object_centroids[:, None, :] - input_centroids[None, :, :], axis=2)
+        
+        # IoU distance matrix (1.0 - IoU)
+        N = len(object_bboxes)
+        M = len(input_bboxes)
+        D_iou = np.zeros((N, M), dtype=np.float32)
+        
+        for i in range(N):
+            for j in range(M):
+                D_iou[i, j] = 1.0 - self._calculate_iou(object_bboxes[i], input_bboxes[j])
+        
+        # Combined metric: weighted sum of Euclidean and IoU distance
+        # Normalize Euclidean by max_distance to keep them in similar range
+        D_euc_norm = D_euc / self.max_distance
+        
+        # If IoU is good, we strongly prefer it. If IoU is 0 (no overlap), Euclidean takes over.
+        return 0.5 * D_euc_norm + 0.5 * D_iou
+
+    def _calculate_iou(self, bbox1, bbox2):
+        """Calculate Intersection over Union of two bounding boxes (x1, y1, x2, y2)"""
+        x1_1, y1_1, x2_1, y2_1 = bbox1
+        x1_2, y1_2, x2_2, y2_2 = bbox2
+        
+        xi1 = max(x1_1, x1_2)
+        yi1 = max(y1_1, y1_2)
+        xi2 = min(x2_1, x2_2)
+        yi2 = min(y2_1, y2_2)
+        
+        inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+        
+        bbox1_area = (x2_1 - x1_1) * (y2_1 - y1_1)
+        bbox2_area = (x2_2 - x1_2) * (y2_2 - y1_2)
+        
+        union_area = bbox1_area + bbox2_area - inter_area
+        return inter_area / union_area if union_area > 0 else 0

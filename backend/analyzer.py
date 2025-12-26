@@ -70,14 +70,16 @@ class UrbanFlowAnalyzer:
         self.detector_type = detector_type
         self.detector = self._create_detector(detector_type, settings or {})
 
-
     def update_settings(self, settings: dict):
+        """Update tracker and detector settings"""
         if 'maxDistance' in settings:
             self.tracker.max_distance = settings['maxDistance']
         if 'maxDisappeared' in settings:
             self.tracker.max_disappeared = settings['maxDisappeared']
-        if 'scoreThreshold' in settings:
-            self.score_threshold = settings['scoreThreshold']
+        
+        # Propagate to detector if applicable
+        if hasattr(self.detector, 'update_settings'):
+            self.detector.update_settings(settings)
 
     def update_roi(self, points: List[dict]):
         self.roi_polygon = [(int(p['x']), int(p['y'])) for p in points]
@@ -164,4 +166,39 @@ class UrbanFlowAnalyzer:
                         
             cv2.circle(annotated_frame, (cx, cy), 4, (0, 255, 0), -1)
 
+        # Draw Calibration Grid Helper (for ground plane verification)
+        self._draw_ground_grid(annotated_frame)
+        
+        # Draw Model Status Overlay
+        cv2.putText(annotated_frame, f"MODE: {self.detector_type.upper()}", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
         return annotated_frame, self.state
+
+    def _draw_ground_grid(self, frame):
+        """Draws a perspective-mapped grid on the floor for calibration verification"""
+        h, w = frame.shape[:2]
+        color = (0, 80, 0) # Subtle Dark Green
+        
+        # Grid range (meters)
+        min_x, max_x = -20, 20
+        min_z, max_z = 0, 50
+        step = 5 # 5 meter steps
+        
+        # Draw lines along Z (forward)
+        for x in range(min_x, max_x + 1, step):
+            prev_p = None
+            for z in range(min_z, max_z + 1, 1):
+                p = self.projector.ground_to_pixel(x, z, w, h)
+                if p and prev_p:
+                    cv2.line(frame, prev_p, p, color, 1)
+                prev_p = p
+        
+        # Draw lines along X (sideways)
+        for z in range(min_z, max_z + 1, step):
+            prev_p = None
+            for x in range(min_x, max_x + 1, 1):
+                p = self.projector.ground_to_pixel(x, z, w, h)
+                if p and prev_p:
+                    cv2.line(frame, prev_p, p, color, 1)
+                prev_p = p

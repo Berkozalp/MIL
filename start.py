@@ -40,44 +40,60 @@ def print_error(text):
     print(f"{Colors.FAIL}[x] {text}{Colors.ENDC}")
 
 def check_dependencies():
-    """Check if required dependencies are installed"""
-    print_header("Checking Dependencies")
+    """Check and install missing required dependencies"""
+    print_header("Syncing Dependencies")
     
-    # Check Python packages
-    required_packages = {'fastapi': 'fastapi', 'uvicorn': 'uvicorn', 'mediapipe': 'mediapipe', 'opencv-python': 'cv2', 'ultralytics': 'ultralytics'}
-    missing_packages = []
+    # Python checks
+    backend_dir = Path(__file__).parent / 'backend'
+    req_file = backend_dir / 'requirements.txt'
     
-    for package, import_name in required_packages.items():
+    if req_file.exists():
+        print_info("Installing/Updating Python dependencies from requirements.txt...")
         try:
-            __import__(import_name)
-            print_success(f"{package} is installed")
-        except ImportError:
-            missing_packages.append(package)
-            print_error(f"{package} is NOT installed")
-    
-    if missing_packages:
-        print_warning(f"\nMissing packages: {', '.join(missing_packages)}")
-        response = input("Would you like to install them now? (y/n): ")
-        if response.lower() == 'y':
-            print_info("Installing missing packages...")
-            subprocess.run([sys.executable, '-m', 'pip', 'install'] + missing_packages)
-            print_success("Packages installed successfully")
-        else:
-            print_error("Cannot start without required packages")
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(req_file)], check=True)
+            print_success("Python dependencies are up to date")
+        except subprocess.CalledProcessError:
+            print_error("Failed to install Python dependencies")
             sys.exit(1)
+            
+    # Check for ML Models
+    models = ['yolov8n.pt', 'efficientdet_lite0.tflite']
+    for model in models:
+        if not (backend_dir / model).exists():
+            print_warning(f"Model {model} is missing in background folder.")
+            print_info(f"Attempting to download {model}...")
+            # For YOLOv8, it downloads automatically on first run, but we can verify it here
+            # For MediaPipe, we check if it's there
+            if model.endswith('.tflite'):
+                print_error(f"Please ensure {model} is placed in the backend/ directory.")
+                # sys.exit(1) # Don't exit, might still work if user has their own
     
+    # Nuclear Cleanup: Kill all node and uvicorn before starting
+    print_info("Performing deep cleanup of existing processes...")
+    try:
+        if sys.platform == 'win32':
+            # Use taskkill to wipe out any hanging instances
+            subprocess.run(['taskkill', '/F', '/IM', 'node.exe', '/T'], capture_output=True)
+            subprocess.run(['taskkill', '/F', '/IM', 'uvicorn.exe', '/T'], capture_output=True)
+        else:
+            subprocess.run(['pkill', '-f', 'node'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'uvicorn'], capture_output=True)
+    except: pass
+
     # Check Node.js
     try:
         subprocess.run(['node', '--version'], capture_output=True, check=True)
         print_success("Node.js is installed")
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print_error("Node.js is NOT installed")
-        print_warning("Please install Node.js from https://nodejs.org/")
+        print_error("Node.js is NOT installed. Please install it from https://nodejs.org/")
         sys.exit(1)
 
 def start_backend():
     """Start the FastAPI backend server"""
     print_header("Starting Backend Server")
+    
+    # Kill any existing process on port 8000
+    kill_port(8000)
     
     backend_dir = Path(__file__).parent / 'backend'
     
@@ -126,8 +142,8 @@ def start_frontend():
     """Start the Vite frontend dev server"""
     print_header("Starting Frontend Server")
     
-    # Kill any existing Vite process
-    kill_port(5173)
+    # Kill any existing Vite process on the new port
+    kill_port(5185)
     
     frontend_dir = Path(__file__).parent / 'frontend'
     
@@ -140,25 +156,44 @@ def start_frontend():
     # Check if node_modules exists
     if not (frontend_dir / 'node_modules').exists():
         print_warning("node_modules not found, running npm install...")
-        subprocess.run(['cmd', '/c', 'npm', 'install'] if sys.platform == 'win32' else ['npm', 'install'], 
-                       cwd=frontend_dir, check=True)
-        print_success("Dependencies installed")
+        try:
+            subprocess.run(['cmd', '/c', 'npm', 'install'] if sys.platform == 'win32' else ['npm', 'install'], 
+                           cwd=frontend_dir, check=True)
+            print_success("Dependencies installed")
+        except Exception as e:
+            print_error(f"Failed to install node modules: {e}")
+            sys.exit(1)
+
+    # Clear Vite cache to prevent MIME/Syntax errors
+    vite_cache = frontend_dir / 'node_modules' / '.vite'
+    if vite_cache.exists():
+        print_info("Clearing Vite dependency cache...")
+        try:
+            import shutil
+            shutil.rmtree(vite_cache)
+            print_success("Vite cache cleared")
+        except Exception as e:
+            print_warning(f"Could not clear Vite cache: {e}")
     
-    print_info("Starting Vite dev server on http://127.0.0.1:5173")
+    print_info("Starting Vite dev server on http://127.0.0.1:5185")
     
-    # Start frontend in background without piping
+    # Environment with explicit PATH and other goodies
+    env = os.environ.copy()
+    
+    # Start frontend in background
     creation_flags = subprocess.CREATE_NEW_CONSOLE if sys.platform == 'win32' else 0
+    
+    # We use 'npx vite' directly with --force and the new port
+    cmd = ['npx', 'vite', '--host', '0.0.0.0', '--port', '5185', '--force']
     if sys.platform == 'win32':
-        frontend_process = subprocess.Popen(
-            ['cmd', '/c', 'npm', 'run', 'dev', '--', '--host', '127.0.0.1'],
-            cwd=frontend_dir,
-            creationflags=creation_flags
-        )
-    else:
-        frontend_process = subprocess.Popen(
-            ['npm', 'run', 'dev', '--', '--host', '127.0.0.1'],
-            cwd=frontend_dir
-        )
+        cmd = ['cmd', '/c'] + cmd
+        
+    frontend_process = subprocess.Popen(
+        cmd,
+        cwd=frontend_dir,
+        env=env,
+        creationflags=creation_flags
+    )
     
     # Wait for frontend to be ready
     print_info("Waiting for frontend server to be ready...")
@@ -170,17 +205,31 @@ def start_frontend():
             print_error("Frontend server failed to start")
             sys.exit(1)
         
-        # Check if server is responding
+        # Deep Health Check: Verify core Vite scripts serve JS, not HTML
         try:
-            with urllib.request.urlopen('http://127.0.0.1:5173', timeout=1) as response:
-                if response.status == 200:
-                    print_success("Frontend server is ready")
-                    # Extra sleep to ensure Vite handles initial module resolution
-                    time.sleep(3)
-                    return frontend_process
+            # Check both the entry point AND the vite client
+            checks_passed = True
+            for script_path in ['/src/main.jsx', '/@vite/client']:
+                with urllib.request.urlopen(f'http://127.0.0.1:5185{script_path}', timeout=1) as response:
+                    content_type = response.getheader('Content-Type', '')
+                    content = response.read(200).decode('utf-8', errors='ignore')
+                    
+                    # If it served HTML for a JS path, it's not ready
+                    if 'text/html' in content_type.lower() or content.strip().startswith('<!doctype'):
+                        checks_passed = False
+                        break
+                    if response.status != 200:
+                        checks_passed = False
+                        break
+            
+            if checks_passed:
+                print_success("Frontend server is fully hydrated and serving JavaScript")
+                # Extra safety buffer for Windows file system locks / bundle finalization
+                time.sleep(3)
+                return frontend_process
         except:
-            if i % 5 == 0 and i > 0:
-                print_info(f"Still waiting... ({i}/{max_wait}s)")
+            if i % 3 == 0 and i > 0:
+                print_info(f"Waiting for Vite to transform scripts... ({i}/{max_wait}s)")
             continue
     
     print_warning("Frontend server started but readiness check timed out")
@@ -190,7 +239,7 @@ def open_browser():
     """Open the application in default browser"""
     print_header("Opening Application")
     
-    url = "http://127.0.0.1:5173"
+    url = "http://127.0.0.1:5185"
     print_info(f"Opening {url} in browser...")
     webbrowser.open(url)
     print_success("Browser opened")
@@ -211,6 +260,25 @@ def main():
         
         # Start servers
         backend_proc = start_backend()
+        
+        # Verify Backend Health before starting Frontend
+        print_info("Verifying backend health...")
+        backend_ok = False
+        import urllib.request
+        for _ in range(10):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8000/", timeout=1) as r:
+                    if r.getcode() == 200:
+                        backend_ok = True
+                        break
+            except: pass
+            time.sleep(1)
+            
+        if not backend_ok:
+            print_error("Backend failed health check. Check logs in the second window.")
+            backend_proc.terminate()
+            sys.exit(1)
+            
         frontend_proc = start_frontend()
         
         # Open browser
@@ -219,7 +287,7 @@ def main():
         # Show status
         print_header("Application Running")
         print_success("Backend:  http://0.0.0.0:8000")
-        print_success("Frontend: http://localhost:5173")
+        print_success("Frontend: http://localhost:5185")
         print_info("\nPress Ctrl+C to stop all servers")
         
         # Keep script running

@@ -1,9 +1,10 @@
+yt_dlp
+ultralytics
+mediapipe
 fastapi
 uvicorn
-mediapipe
 opencv-python
 numpy
 websockets
 python-multipart
 scipy
-yt_dlp

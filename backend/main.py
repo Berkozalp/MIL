@@ -65,6 +65,16 @@ def seek_video(settings: SeekSettings):
     streamer_instance.seek(settings.seconds)
     return {"status": "seeked", "seconds": settings.seconds}
 
+class TrackerSettings(BaseModel):
+    maxDistance: int
+    maxDisappeared: int
+    scoreThreshold: float
+
+@app.post("/settings")
+def update_settings(settings: TrackerSettings):
+    streamer_instance.analyzer.update_settings(settings.dict())
+    return {"status": "updated", "settings": settings}
+
 class ModelSettings(BaseModel):
     detector_type: str
     settings: dict = {}

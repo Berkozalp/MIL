@@ -76,3 +76,46 @@ class CameraProjector:
         intersect_point = np.array([0, self.h, 0]) + t * ray_world
         
         return intersect_point[0], intersect_point[2] # Return X, Z on ground
+
+    def ground_to_pixel(self, x, z, width, height):
+        """
+        Convert ground coordinates (x, z) back to pixel coordinates (u, v).
+        Assumes ground is at y = 0.
+        """
+        # 1. Point in World Space
+        P_world = np.array([x, 0, z])
+        
+        # 2. Transform to Camera Space
+        # Camera is at (0, h, 0). 
+        # P_cam_rel = P_world - Cam_Pos
+        P_rel = P_world - np.array([0, self.h, 0])
+        
+        # Invert rotation: Cam_P = Rx_inv * Ry_inv * P_rel
+        # Rx_inv = transpose(Rx), Ry_inv = transpose(Ry)
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(self.pitch), -np.sin(self.pitch)],
+            [0, np.sin(self.pitch), np.cos(self.pitch)]
+        ])
+        Ry = np.array([
+            [np.cos(self.yaw), 0, np.sin(self.yaw)],
+            [0, 1, 0],
+            [-np.sin(self.yaw), 0, np.cos(self.yaw)]
+        ])
+        
+        P_cam = Rx.T @ (Ry.T @ P_rel)
+        
+        # 3. Project to Image Plane
+        # OpenGL convention: forward is -Z
+        if P_cam[2] >= 0: # Point is behind camera
+            return None
+            
+        # x_img = cam_x / (-cam_z * tan(fov_h/2))
+        x_ndc = P_cam[0] / (-P_cam[2] * np.tan(self.fov_h / 2))
+        y_ndc = P_cam[1] / (-P_cam[2] * np.tan(self.fov_v / 2))
+        
+        # 4. Convert NDR to Pixels
+        u = (x_ndc + 1.0) * width / 2.0
+        v = (1.0 - y_ndc) * height / 2.0
+        
+        return int(u), int(v)
